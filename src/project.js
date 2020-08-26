@@ -19,17 +19,27 @@ function Project(options) {
   this.memFsEditor = editor.create(store);
 }
 
-Project.prototype.create = function() {
+Project.prototype.create = function () {
   this.inquire()
     .then((answer) => {
+      console.log(answer)
       this.config = Object.assign(this.config, answer);
       this.generate();
     });
 };
 
-Project.prototype.inquire = function() {
+Project.prototype.inquire = function () {
   const prompts = [];
   const { projectName, description } = this.config;
+  prompts.push({
+    type: 'list',
+    message: '请选择项目模板',
+    name: 'projectType',
+    choices: Object.keys(TEMPLATE_GIT_REPO),
+    filter: function (val) { // 使用filter将回答变为小写
+      return val.toLowerCase();
+    }
+  })
   if (typeof projectName !== 'string') {
     prompts.push({
       type: 'input',
@@ -44,7 +54,7 @@ Project.prototype.inquire = function() {
         }
         return true;
       }
-    });    
+    });
   } else if (fse.existsSync(projectName)) {
     prompts.push({
       type: 'input',
@@ -70,6 +80,18 @@ Project.prototype.inquire = function() {
     });
   }
 
+  prompts.push({
+    type: "confirm",
+    message: "是否执行 npm install 安装 ?",
+    name: "npmInit",
+    suffix: "",
+  })
+  prompts.push({
+    type: "confirm",
+    message: "是否执行 git init ?",
+    name: "gitInit",
+    suffix: "",
+  })
   return inquirer.prompt(prompts);
 };
 
@@ -79,23 +101,68 @@ Project.prototype.inquire = function() {
  * @param {string} dest 目标文件路径
  * @param {object} data 替换文本字段
  */
-Project.prototype.injectTemplate = function(source, dest, data) {
+Project.prototype.injectTemplate = function (source, dest, data) {
   this.memFsEditor.copyTpl(
     source,
     dest,
     data
   );
 }
+/**
+ * 安装依赖
+ */
+Project.prototype.npmInit = function () {
+  // 安装依赖
+  console.log('安装依赖');
+  const installSpinner = ora(`安装项目依赖 ${chalk.green.bold('npm install')}, 请稍后...`);
+  installSpinner.start();
+  exec('npm install', (error, stdout, stderr) => {
+    if (error) {
+      installSpinner.color = 'red';
+      installSpinner.fail(chalk.red('安装项目依赖失败，请自行重新安装！'));
+      console.log(error);
+    } else {
+      installSpinner.color = 'green';
+      installSpinner.succeed('安装依赖成功');
+      console.log(`${stderr}${stdout}`);
 
-Project.prototype.generate = function() {
-  const { projectName, description } = this.config;
+      console.log();
+      console.log(chalk.green('创建项目成功！'));
+      console.log(chalk.green('Let\'s Coding吧！嘿嘿😝'));
+    }
+  })
+}
+/**
+ * git 初始化
+ */
+Project.prototype.gitInit = function (projectName) {
+
+  // git 初始化
+  console.log('git 初始化');
+  const gitInitSpinner = ora(`cd ${chalk.green.bold(projectName)}目录, 执行 ${chalk.green.bold('git init')}`);
+  gitInitSpinner.start();
+
+  const gitInit = exec('git init');
+  gitInit.on('close', (code) => {
+    if (code === 0) {
+      gitInitSpinner.color = 'green';
+      gitInitSpinner.succeed(gitInit.stdout.read());
+    } else {
+      gitInitSpinner.color = 'red';
+      gitInitSpinner.fail(gitInit.stderr.read());
+    }
+  })
+}
+
+Project.prototype.generate = function () {
+  const { projectName, description, projectType, gitInit, npmInit } = this.config;
   const projectPath = path.join(process.cwd(), projectName);
   const downloadPath = path.join(projectPath, '__download__');
 
   const downloadSpinner = ora('正在下载模板，请稍等...');
   downloadSpinner.start();
   // 下载git repo
-  download(TEMPLATE_GIT_REPO, downloadPath, { clone: true }, (err) => {
+  download(TEMPLATE_GIT_REPO[projectType], downloadPath, { clone: true }, (err) => {
     if (err) {
       downloadSpinner.color = 'red';
       downloadSpinner.fail(err.message);
@@ -129,42 +196,12 @@ Project.prototype.generate = function() {
       fse.remove(downloadPath);
 
       process.chdir(projectPath);
-
-      // git 初始化
-      console.log();
-      const gitInitSpinner = ora(`cd ${chalk.green.bold(projectName)}目录, 执行 ${chalk.green.bold('git init')}`);
-      gitInitSpinner.start();
-
-      const gitInit = exec('git init');
-      gitInit.on('close', (code) => {
-        if (code === 0) {
-          gitInitSpinner.color = 'green';
-          gitInitSpinner.succeed(gitInit.stdout.read());
-        } else {
-          gitInitSpinner.color = 'red';
-          gitInitSpinner.fail(gitInit.stderr.read());
-        }
-
-        // 安装依赖
-        console.log();
-        const installSpinner = ora(`安装项目依赖 ${chalk.green.bold('npm install')}, 请稍后...`);
-        installSpinner.start();
-        exec('npm install', (error, stdout, stderr) => {
-          if (error) {
-            installSpinner.color = 'red';
-            installSpinner.fail(chalk.red('安装项目依赖失败，请自行重新安装！'));
-            console.log(error);
-          } else {
-            installSpinner.color = 'green';
-            installSpinner.succeed('安装依赖成功');
-            console.log(`${stderr}${stdout}`);
-
-            console.log();
-            console.log(chalk.green('创建项目成功！'));
-            console.log(chalk.green('Let\'s Coding吧！嘿嘿😝'));
-          }
-        })
-      })
+      if (gitInit) {
+        this.gitInit(projectName)
+      }
+      if (npmInit) {
+        this.npmInit(projectName)
+      }
     });
   });
 }

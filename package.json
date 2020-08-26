@@ -3,7 +3,7 @@
   "version": "0.1.1",
   "description": "A cli for init project",
   "bin": {
-    "begin": "bin/begin"
+    "begin": "bin/begin.js"
   },
   "main": "index.js",
   "scripts": {
