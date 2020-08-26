@@ -1,6 +1,6 @@
 {
   "name": "ftk-template-cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A cli for init project",
   "bin": {
     "begin": "bin/begin"
